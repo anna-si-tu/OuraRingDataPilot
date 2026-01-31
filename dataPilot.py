@@ -4,10 +4,10 @@
 
 # data = {
 #     "grant_type": "authorization_code",
-#     "code": "ug8ruzyKJYk6GJ4a4Xcclv3C85TyTJC8",
+#     "code": "your_code_here",
 #     "redirect_uri": "http://localhost:8080",
-#     "client_id": "9fd81580-c34c-4001-95cb-be2eb6a57105",
-#     "client_secret": "rjVU4lC9sjqyOcV2iQm1XnQFd8fQQGTR-1XiSiOez0o"
+#     "client_id": "client_id_here",
+#     "client_secret": "client_secret_here"
 # }
 
 # response = requests.post(TOKEN_URL, data=data)
@@ -21,7 +21,7 @@ import requests
 import pandas as pd
 # import os
 
-ACCESS_TOKEN = "_0XBPWQQ_ba1dc679-a6fe-4c21-942e-0da6269ca943"
+ACCESS_TOKEN = "ACCESS_TOKEN_HERE"
 
 headers = {
     "Authorization": f"Bearer {ACCESS_TOKEN}"
@@ -36,14 +36,15 @@ params = {
     "end_datetime": "2026-01-28T23:59:59"
 }
 
+# Ensure params are large enough to capture all day
+
 r = requests.get(url, headers = headers, params = params)
 r.raise_for_status()
 
 data = r.json()["data"]
 df = pd.DataFrame(data)
 
-# print(df.head())
-# View data
+# print(df.head())      # View data
 
 df["timestamp"] = pd.to_datetime(df["timestamp"])
 

@@ -14,8 +14,6 @@ heartrate_df["timestamp"] = pd.to_datetime(
     utc=True
 )
 
-heartrate_df["timestamp"] = heartrate_df["timestamp"].dt.tz_convert("America/Los_Angeles")
-
 # Function given to convert nuanic data
 def convert_nuanic_eda(data):
     # only keep time and eda columns
@@ -27,6 +25,9 @@ def convert_nuanic_eda(data):
     return data
 
 converted_nuanic_data = convert_nuanic_eda(nuanic_data)
+
+heartrate_df['timestamp'] = heartrate_df['timestamp'].dt.tz_convert('America/Los_Angeles').dt.tz_localize(None)
+converted_nuanic_data['time'] = converted_nuanic_data['time'].dt.tz_convert('US/Pacific').dt.tz_localize(None)
 
 # Create Dash app
 app = Dash(__name__)
@@ -79,18 +80,22 @@ def update_graph(signal, start, end):
         value_col = "eda_conductance"
         title = "EDA Conductance Over Time"
 
-    filtered = df.loc[
-        (df[time_col] >= start) &
-        (df[time_col] <= end)
-    ]
+    start_dt = pd.to_datetime(start)
+    end_dt = pd.to_datetime(end)
 
-    return px.line(
-        filtered,
-        x=time_col,
-        y=value_col,
-        title=title
-    )
+    filtered = df.loc[(df[time_col] >= start_dt) & (df[time_col] <= end_dt)].copy()
 
+    if filtered.empty:
+        return px.line(title="No data in this range")
+
+    # downsample
+    N = 10
+    filtered = filtered.iloc[::N]
+
+    fig = px.line(filtered, x=time_col, y=value_col, title=title)
+    fig.update_layout(hovermode="x unified", xaxis_title="Time", yaxis_title=value_col)
+
+    return fig
 
 if __name__ == "__main__":
     app.run(debug=True)

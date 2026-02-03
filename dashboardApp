@@ -5,24 +5,92 @@ import pandas as pd
 
 # install packages: pip install plotly dash pandas
 
-df = pd.read_csv("data/oura_heartrate_pilot.csv", parse_dates = ["timestamp"])
+nuanic_data = pd.read_csv("data/nuanic.csv")
+heartrate_df = pd.read_csv("data/oura_heartrate_pilot.csv", parse_dates = ["timestamp"])
 
-app.layout = html.Div([
-    html.H1("Time-Series Dashboard"),
-    dcc.DatePickerRange(
-        id='date-range',
-        start_date=df['Date'].min(),
-        end_date=df['Date'].max()
-    ),
-    dcc.Graph(id='time-series-graph')
-])
+heartrate_df["timestamp"] = pd.to_datetime(
+    heartrate_df["timestamp"],
+    format="mixed",
+    utc=True
+)
+
+heartrate_df["timestamp"] = heartrate_df["timestamp"].dt.tz_convert("America/Los_Angeles")
+
+# Function given to convert nuanic data
+def convert_nuanic_eda(data):
+    # only keep time and eda columns
+    data = data[['time', 'eda']]
+    # convert eda to conductance
+    data['eda_conductance'] = 1 / data['eda']*1000000
+    # time is in UTC, convert to US/Pacific
+    data['time'] = pd.to_datetime(data['time']).dt.tz_convert('US/Pacific')
+    return data
+
+converted_nuanic_data = convert_nuanic_eda(nuanic_data)
+
+# Create Dash app
+app = Dash(__name__)
+
+app.layout = html.Div(
+    style={"width": "80%", "margin": "auto"},
+    children=[
+        html.H2("Oura Time-Series Dashboard"),
+
+        dcc.DatePickerRange(
+            id="date-picker",
+            start_date=heartrate_df["timestamp"].min(),
+            end_date=heartrate_df["timestamp"].max(),
+            display_format="YYYY-MM-DD"
+        ),
+
+        dcc.Dropdown(
+            id="signal-dropdown",
+            options=[
+                {"label": "Heart Rate", "value": "hr"},
+                {"label": "EDA (Conductance)", "value": "eda"},
+            ],
+            value="hr",
+            clearable=False,
+            style={"width": "250px", "marginTop": "20px"}
+        ),
+
+        dcc.Graph(id="hr-graph"),
+    ]
+)
 
 @app.callback(
-    Output('time-series-graph', 'figure'),
-    Input('date-range', 'start_date'),
-    Input('date-range', 'end_date')
+    Output("hr-graph", "figure"),
+    Input("signal-dropdown", "value"),
+    Input("date-picker", "start_date"),
+    Input("date-picker", "end_date"),
 )
-def update_graph(start_date, end_date):
-    filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
-    fig = px.line(filtered_df, x='Date', y='Value')
-    return fig
+
+def update_graph(signal, start, end):
+
+    if signal == "hr":
+        df = heartrate_df
+        time_col = "timestamp"
+        value_col = df.columns[1]
+        title = "Heart Rate Over Time"
+
+    else:
+        df = converted_nuanic_data
+        time_col = "time"
+        value_col = "eda_conductance"
+        title = "EDA Conductance Over Time"
+
+    filtered = df.loc[
+        (df[time_col] >= start) &
+        (df[time_col] <= end)
+    ]
+
+    return px.line(
+        filtered,
+        x=time_col,
+        y=value_col,
+        title=title
+    )
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

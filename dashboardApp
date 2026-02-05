@@ -89,8 +89,9 @@ def update_graph(signal, start, end):
         return px.line(title="No data in this range")
 
     # downsample
-    N = 10
-    filtered = filtered.iloc[::N]
+    # N = 10
+    # filtered = filtered.iloc[::N]
+    # find different way to downsample
 
     fig = px.line(filtered, x=time_col, y=value_col, title=title)
     fig.update_layout(hovermode="x unified", xaxis_title="Time", yaxis_title=value_col)

@@ -2,9 +2,9 @@ import requests
 import pandas as pd
 import os
 
-# install packages: python -m pip install requests
+# # install packages: python -m pip install requests
 
-# CODE FOR GETTING INFORMATION FROM OuraAPI
+# # CODE FOR GETTING INFORMATION FROM OuraAPI
 # TOKEN_URL = "https://api.ouraring.com/oauth/token"
 
 # data = {
@@ -21,21 +21,27 @@ import os
 # tokens = response.json()
 # print(tokens)                         # Use printed tokens for access_token
 
-ACCESS_TOKEN = "ACCESS_TOKEN_HERE"
+ACCESS_TOKEN = "_0XBPWQQ_ba1dc679-a6fe-4c21-942e-0da6269ca943"
 
 headers = {
     "Authorization": f"Bearer {ACCESS_TOKEN}"
 }
 
 # url changes depending on what you want to
-url = "https://api.ouraring.com/v2/usercollection/heartrate"
+url = "https://api.ouraring.com/v2/usercollection/sleep"
 
 # collect: heartrate during day + sleep, HRV, steps
 
 # Ensure params are large enough to capture all day
+# Only works for direct urls
+# params = {
+#     "start_datetime": "2026-01-20T00:00:00",
+#     "end_datetime": "2026-01-28T23:59:59"
+# }
+
 params = {
-    "start_datetime": "2026-01-20T00:00:00",
-    "end_datetime": "2026-01-28T23:59:59"
+    "start_date": "2026-01-20",
+    "end_date": "2026-01-28"
 }
 
 r = requests.get(url, headers = headers, params = params)
@@ -46,12 +52,18 @@ df = pd.DataFrame(data)                 # Convert data into df
 
 # print(df.head())                      # View data
 
-df["timestamp"] = pd.to_datetime(df["timestamp"])
+# df["timestamp"] = pd.to_datetime(df["timestamp"]) # Only works for direct urls
+
+df['bedtime_start'] = pd.to_datetime(df['bedtime_start'])
+df['bedtime_end'] = pd.to_datetime(df['bedtime_end'])
+df['day'] = pd.to_datetime(df['day']).dt.date
 
 # Convert df to csv to be saved locally
 df.to_csv(
-    "oura_heartrate_pilot.csv",
+    "oura_sleep.csv",
     index = False
 )
 
-# print("Saving to:", os.getcwd())      # Find where the file went
+print("Saving to:", os.getcwd())      # Find where the file went
+
+print(df.head())

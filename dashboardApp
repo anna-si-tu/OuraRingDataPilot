@@ -1,100 +1,145 @@
-from dash import Dash, dcc, html
+import os
+import pandas as pd
+from dash import Dash, html, dcc
 from dash.dependencies import Input, Output
 import plotly.express as px
-import pandas as pd
 
 # install packages: pip install plotly dash pandas
 
-nuanic_data = pd.read_csv("data/nuanic.csv")
-heartrate_df = pd.read_csv("data/oura_heartrate_pilot.csv", parse_dates = ["timestamp"])
+# List of patients
+patients = ["p01", "p02"]
 
-heartrate_df["timestamp"] = pd.to_datetime(
-    heartrate_df["timestamp"],
-    format="mixed",
-    utc=True
+# Load initial Oura data for the first patient to set defaults
+heartrate_df = pd.read_csv("data/p01/oura_heartrate.csv", parse_dates=["timestamp"])
+heartrate_df["timestamp"] = (
+    pd.to_datetime(heartrate_df["timestamp"], format = "mixed", utc=True)
+    .dt.tz_convert("America/Los_Angeles")
+    .dt.tz_localize(None)
 )
 
-# Function given to convert nuanic data
+# Function to convert NuANIC EDA data
 def convert_nuanic_eda(data):
-    # only keep time and eda columns
-    data = data[['time', 'eda']]
-    # convert eda to conductance
-    data['eda_conductance'] = 1 / data['eda']*1000000
-    # time is in UTC, convert to US/Pacific
-    data['time'] = pd.to_datetime(data['time']).dt.tz_convert('US/Pacific')
+    data = data[['time', 'eda']].copy()
+    data['eda_conductance'] = 1 / data['eda'] * 1_000_000
+    data['time'] = pd.to_datetime(data['time'], utc=True).dt.tz_convert('US/Pacific').dt.tz_localize(None)
     return data
-
-converted_nuanic_data = convert_nuanic_eda(nuanic_data)
-
-heartrate_df['timestamp'] = heartrate_df['timestamp'].dt.tz_convert('America/Los_Angeles').dt.tz_localize(None)
-converted_nuanic_data['time'] = converted_nuanic_data['time'].dt.tz_convert('US/Pacific').dt.tz_localize(None)
 
 # Create Dash app
 app = Dash(__name__)
 
+# Create layout
 app.layout = html.Div(
-    style={"width": "80%", "margin": "auto"},
-    children=[
+    style = {"width": "80%", "margin": "auto"},
+    children = [
         html.H2("Oura Time-Series Dashboard"),
 
-        dcc.DatePickerRange(
-            id="date-picker",
-            start_date=heartrate_df["timestamp"].min(),
-            end_date=heartrate_df["timestamp"].max(),
-            display_format="YYYY-MM-DD"
+        # Date-picker
+        dcc.DatePickerSingle(
+            id = "date-picker",
+            date = heartrate_df["timestamp"].min().date(),  # Use a default loaded csv
+                                                            # Will be overwritten after app is called
+            display_format = "YYYY-MM-DD",
+            style = {"marginTop": "20px"}
         ),
 
+        # Choose which participant to display
         dcc.Dropdown(
-            id="signal-dropdown",
-            options=[
+            id = "participant-dropdown",
+            options = [{"label": p, "value": p} for p in patients],
+            value = patients[0],
+            clearable = False,
+            style = {"width": "250px", "marginTop": "20px"}
+        ),
+
+        # Type of data to display
+        dcc.Dropdown(
+            id = "signal-dropdown",
+            options = [
                 {"label": "Heart Rate", "value": "hr"},
+                # {"label": "HRV", "value": "hrv"},
                 {"label": "EDA (Conductance)", "value": "eda"},
             ],
-            value="hr",
-            clearable=False,
-            style={"width": "250px", "marginTop": "20px"}
+            value = "hr",
+            clearable = False,
+            style = {"width": "250px", "marginTop": "20px"}
         ),
 
-        dcc.Graph(id="hr-graph"),
+        dcc.Graph(id = "hr-graph"), # Default graph
     ]
 )
 
 @app.callback(
     Output("hr-graph", "figure"),
+    Input("participant-dropdown", "value"),
     Input("signal-dropdown", "value"),
-    Input("date-picker", "start_date"),
-    Input("date-picker", "end_date"),
+    Input("date-picker", "date")
 )
 
-def update_graph(signal, start, end):
+def update_graph(patient_id, signal, date):
+    selected_date = pd.to_datetime(date)
+    start_dt = selected_date.normalize()        # midnight of that day
+    end_dt = start_dt + pd.Timedelta(days=1)    # midnight next day
 
     if signal == "hr":
-        df = heartrate_df
-        time_col = "timestamp"
-        value_col = df.columns[1]
-        title = "Heart Rate Over Time"
-
-    else:
-        df = converted_nuanic_data
+        df = pd.read_csv(f"data/{patient_id}/oura_heartrate.csv", parse_dates=["timestamp"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", utc=True).dt.tz_convert("America/Los_Angeles").dt.tz_localize(None)
+        df = df.rename(columns={"timestamp": "time"})
         time_col = "time"
-        value_col = "eda_conductance"
-        title = "EDA Conductance Over Time"
+        value_col = "bpm"
+        title = f"Oura Heart Rate — {patient_id}"
 
-    start_dt = pd.to_datetime(start)
-    end_dt = pd.to_datetime(end)
+    # elif signal == "hrv":
+    #     df = pd.read_csv(f"data/{patient_id}/oura_hrv.csv", parse_dates=["timestamp"])
+    #     df["timestamp"] = pd.to_datetime(df["timestamp"], format="mixed", utc=True).dt.tz_convert("America/Los_Angeles").dt.tz_localize(None)
+    #     df = df.rename(columns={"timestamp": "time"})
+    #     time_col = "time"
+    #     value_col = "rmmsd"
+    #     title = f"Oura HRV — {patient_id}"
 
-    filtered = df.loc[(df[time_col] >= start_dt) & (df[time_col] <= end_dt)].copy()
+    elif signal == "eda":
+        nuanic_path = f"data/{patient_id}/nuanic.csv"
+        if os.path.exists(nuanic_path):
+            nuanic = pd.read_csv(nuanic_path)
+            df = convert_nuanic_eda(nuanic)
+            time_col = "time"
+            value_col = "eda_conductance"
+            title = f"Nuanic EDA Conductance — {patient_id}"
+        else:
+            return px.line(title=f"No EDA data available for {patient_id}")     # Where EDA doesn't exist (P01)
+
+    # Filter for the selected day
+    filtered = df[(df[time_col] >= start_dt) & (df[time_col] < end_dt)].sort_values(time_col)
 
     if filtered.empty:
-        return px.line(title="No data in this range")
+        return px.line(title="No data for this day")
 
-    # downsample
-    # N = 10
-    # filtered = filtered.iloc[::N]
-    # find different way to downsample
+    # Create the line figure
+    fig = px.line(filtered, x=time_col, y=value_col, title=title, template="plotly_white")
+    fig.update_traces(connectgaps=False)
 
-    fig = px.line(filtered, x=time_col, y=value_col, title=title)
-    fig.update_layout(hovermode="x unified", xaxis_title="Time", yaxis_title=value_col)
+    # Highlight gaps where no data was collected
+    # compute differences between consecutive timestamps
+    filtered['diff'] = filtered[time_col].diff().dt.total_seconds() / 60    # minutes
+    gap_threshold = 10   # minutes
+    gaps = filtered[filtered['diff'] > gap_threshold]
+
+    for _, row in gaps.iterrows():
+        gap_start = row[time_col] - pd.Timedelta(minutes = row['diff'])
+        gap_end = row[time_col]
+        fig.add_vrect(
+            x0 = gap_start,
+            x1 = gap_end,
+            fillcolor = "red",
+            opacity = 0.2,
+            layer = "below",
+            line_width = 0
+        )
+
+    fig.update_layout(
+        hovermode = "x unified",
+        xaxis_title = "Time",
+        yaxis_title = value_col
+    )
 
     return fig
 
